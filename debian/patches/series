@@ -1,1 +1,2 @@
 0001_remove_broken_test_case.patch
+pytest-8.2-asyncio.patch
