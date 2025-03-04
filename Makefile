@@ -17,22 +17,11 @@ clean-pyc: ## remove Python file artifacts
 
 clean-test: ## remove test and coverage artifacts
 	rm -fr .tox/
-	rm -f .coverage
+	rm -fr coverage/
 	rm -fr htmlcov/
 
-lint:
-# CI env-var is set by GitHub actions
-ifdef CI
-	python -m pre_commit run --all-files --show-diff-on-failure
-else
-	python -m pre_commit run --all-files
-endif
-	python -m mypy pytest_asyncio --show-error-codes
-
 test:
-	coverage run -m pytest tests
-	coverage xml
-	coverage report
+	coverage run -m pytest
 
 install:
 	pip install -U pre-commit

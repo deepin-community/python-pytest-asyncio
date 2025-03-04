@@ -1,24 +1,34 @@
-"""Tests for the Hypothesis integration, which wraps async functions in a
+"""
+Tests for the Hypothesis integration, which wraps async functions in a
 sync shim for Hypothesis.
 """
-import asyncio
+
+from __future__ import annotations
+
 from textwrap import dedent
 
 import pytest
 from hypothesis import given, strategies as st
+from pytest import Pytester
 
 
-@pytest.fixture(scope="module")
-def event_loop():
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+def test_hypothesis_given_decorator_before_asyncio_mark(pytester: Pytester):
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function")
+    pytester.makepyfile(
+        dedent(
+            """\
+            import pytest
+            from hypothesis import given, strategies as st
 
-
-@given(st.integers())
-@pytest.mark.asyncio
-async def test_mark_inner(n):
-    assert isinstance(n, int)
+            @given(st.integers())
+            @pytest.mark.asyncio
+            async def test_mark_inner(n):
+                assert isinstance(n, int)
+            """
+        )
+    )
+    result = pytester.runpytest_subprocess("--asyncio-mode=strict", "-W default")
+    result.assert_outcomes(passed=1)
 
 
 @pytest.mark.asyncio
@@ -35,16 +45,46 @@ async def test_mark_and_parametrize(x, y):
     assert y in (1, 2)
 
 
-@given(st.integers())
-@pytest.mark.asyncio
-async def test_can_use_fixture_provided_event_loop(event_loop, n):
-    semaphore = asyncio.Semaphore(value=0)
-    event_loop.call_soon(semaphore.release)
-    await semaphore.acquire()
+def test_can_use_explicit_event_loop_fixture(pytester: Pytester):
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = module")
+    pytester.makepyfile(
+        dedent(
+            """\
+            import asyncio
+            import pytest
+            from hypothesis import given
+            import hypothesis.strategies as st
+
+            pytest_plugins = 'pytest_asyncio'
+
+            @pytest.fixture(scope="module")
+            def event_loop():
+                loop = asyncio.get_event_loop_policy().new_event_loop()
+                yield loop
+                loop.close()
+
+            @given(st.integers())
+            @pytest.mark.asyncio
+            async def test_explicit_fixture_request(event_loop, n):
+                semaphore = asyncio.Semaphore(value=0)
+                event_loop.call_soon(semaphore.release)
+                await semaphore.acquire()
+            """
+        )
+    )
+    result = pytester.runpytest_subprocess("--asyncio-mode=strict", "-W default")
+    result.assert_outcomes(passed=1, warnings=2)
+    result.stdout.fnmatch_lines(
+        [
+            '*is asynchronous and explicitly requests the "event_loop" fixture*',
+            "*event_loop fixture provided by pytest-asyncio has been redefined*",
+        ]
+    )
 
 
-def test_async_auto_marked(testdir):
-    testdir.makepyfile(
+def test_async_auto_marked(pytester: Pytester):
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function")
+    pytester.makepyfile(
         dedent(
             """\
         import asyncio
@@ -60,13 +100,14 @@ def test_async_auto_marked(testdir):
         """
         )
     )
-    result = testdir.runpytest("--asyncio-mode=auto")
+    result = pytester.runpytest("--asyncio-mode=auto")
     result.assert_outcomes(passed=1)
 
 
-def test_sync_not_auto_marked(testdir):
+def test_sync_not_auto_marked(pytester: Pytester):
     """Assert that synchronous Hypothesis functions are not marked with asyncio"""
-    testdir.makepyfile(
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function")
+    pytester.makepyfile(
         dedent(
             """\
         import asyncio
@@ -84,5 +125,5 @@ def test_sync_not_auto_marked(testdir):
         """
         )
     )
-    result = testdir.runpytest("--asyncio-mode=auto")
+    result = pytester.runpytest("--asyncio-mode=auto")
     result.assert_outcomes(passed=1)

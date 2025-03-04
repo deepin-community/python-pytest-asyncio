@@ -1,16 +1,20 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 
 import pytest
 
+import pytest_asyncio
 
-@pytest.mark.asyncio
+
+@pytest.mark.asyncio(loop_scope="module")
 async def test_module_with_event_loop_finalizer(port_with_event_loop_finalizer):
     await asyncio.sleep(0.01)
     assert port_with_event_loop_finalizer
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(loop_scope="module")
 async def test_module_with_get_event_loop_finalizer(port_with_get_event_loop_finalizer):
     await asyncio.sleep(0.01)
     assert port_with_get_event_loop_finalizer
@@ -25,23 +29,23 @@ def event_loop():
     loop.close()
 
 
-@pytest.fixture(scope="module")
-async def port_with_event_loop_finalizer(request, event_loop):
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
+async def port_with_event_loop_finalizer(request):
     def port_finalizer(finalizer):
         async def port_afinalizer():
             # await task using loop provided by event_loop fixture
             # RuntimeError is raised if task is created on a different loop
             await finalizer
 
-        event_loop.run_until_complete(port_afinalizer())
+        asyncio.run(port_afinalizer())
 
     worker = asyncio.ensure_future(asyncio.sleep(0.2))
     request.addfinalizer(functools.partial(port_finalizer, worker))
     return True
 
 
-@pytest.fixture(scope="module")
-async def port_with_get_event_loop_finalizer(request, event_loop):
+@pytest_asyncio.fixture(loop_scope="module", scope="module")
+async def port_with_get_event_loop_finalizer(request):
     def port_finalizer(finalizer):
         async def port_afinalizer():
             # await task using current loop retrieved from the event loop policy
