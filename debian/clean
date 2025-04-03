@@ -1,1 +1,3 @@
 .eggs/
+pytest_asyncio.egg-info/
+pytest_asyncio/_version.py
